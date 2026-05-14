@@ -566,7 +566,7 @@ textarea{height:130px;resize:none;font-family:var(--mono);}
       </div>
       <div>
         <div style="font-size:.95rem;font-weight:700;color:var(--text-primary);">Music</div>
-        <div style="font-size:.72rem;color:var(--text-muted);font-family:var(--mono);">I don't think it's working, will fix soon</div>
+        <div style="font-size:.72rem;color:var(--text-muted);font-family:var(--mono);">YouTube Music · Free · No API key</div>
       </div>
       <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
         <span id="music-now-title" style="font-size:.75rem;color:var(--text-dim);font-family:var(--mono);max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>
@@ -742,7 +742,6 @@ textarea{height:130px;resize:none;font-family:var(--mono);}
   <iframe id="afk-cloak-frame" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
   <div id="afk-cloak-interceptor" tabindex="0"></div>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/dashjs@4.5.0/dist/dash.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/luminsdk/script@latest/lumin.min.js"></script>
 
 <script>
@@ -1197,13 +1196,14 @@ function closeZone(){recordGameClose();zoneViewer.style.display="none";if(zoneFr
 function fullscreenZone(){if(zoneFrame.requestFullscreen)zoneFrame.requestFullscreen();else if(zoneFrame.webkitRequestFullscreen)zoneFrame.webkitRequestFullscreen();}
 window.addEventListener("resize",function(){if(featuredGames.length>0)gamesRenderFeatured();});
 // ── MUSIC PLAYER ─────────────────────────────────────────────
-var MONOCHROME_API="https://api.monochrome.tf";
+var VEROME_API="https://verome-api.deno.dev";
 var musicResults=[],musicCurrentIdx=-1,musicShuffleOn=false,musicAiLoading=false,musicQueue=[];
 var MUSIC_HISTORY_KEY="bg_music_history";
-var _musicAudio=null,_musicDash=null;
+var _musicAudio=null;
 
 function getMusicAudio(){
-  if(!_musicAudio){_musicAudio=document.getElementById("audio-player");
+  if(!_musicAudio){
+    _musicAudio=document.getElementById("audio-player");
     _musicAudio.addEventListener("ended",musicNext);
     _musicAudio.addEventListener("play",function(){document.getElementById("music-pp-btn").innerHTML='<i class="fas fa-pause"></i>';document.getElementById("music-bar-pp").innerHTML='<i class="fas fa-pause"></i>';});
     _musicAudio.addEventListener("pause",function(){document.getElementById("music-pp-btn").innerHTML='<i class="fas fa-play"></i>';document.getElementById("music-bar-pp").innerHTML='<i class="fas fa-play"></i>';});
@@ -1211,17 +1211,11 @@ function getMusicAudio(){
   return _musicAudio;
 }
 
-function musicGetCoverUrl(cover){
-  if(!cover)return"";
-  if(typeof cover==="string"&&(cover.startsWith("http")||cover.startsWith("blob:")))return cover;
-  return"https://resources.tidal.com/images/"+cover.replace(/-/g,"/")+"/320x320.jpg";
-}
-
 function musicGetHistory(){try{return JSON.parse(localStorage.getItem(MUSIC_HISTORY_KEY))||[];}catch(e){return[];}}
 function musicSaveHistory(h){localStorage.setItem(MUSIC_HISTORY_KEY,JSON.stringify(h));}
 function musicAddToHistory(item){
   var h=musicGetHistory();
-  var entry={videoId:String(item.id),title:item.title||"Unknown",channel:item.artist?.name||"",thumb:item._thumb||musicGetCoverUrl(item.album?.cover),ts:Date.now()};
+  var entry={videoId:String(item.videoId||item.id),title:item.title||"Unknown",channel:item.artist||"",thumb:item.thumbnail||item._thumb||"",ts:Date.now()};
   h=h.filter(function(x){return x.videoId!==entry.videoId;});
   h.unshift(entry);if(h.length>50)h.length=50;
   musicSaveHistory(h);musicRenderHistory();
@@ -1251,7 +1245,7 @@ function musicRenderHistory(){
 function musicRelTime(ts){var d=Date.now()-ts,m=Math.floor(d/60000);if(m<1)return"Just now";if(m<60)return m+"m ago";var h=Math.floor(m/60);if(h<24)return h+"h ago";return Math.floor(h/24)+"d ago";}
 
 function musicSearchAndPlay(videoId,title,channel,thumb){
-  var fakeItem={id:videoId,title:title,artist:{name:channel},album:{cover:null},_thumb:thumb};
+  var fakeItem={videoId:videoId,title:title,artist:channel,thumbnail:thumb};
   musicResults=[fakeItem];musicPlay(0);
 }
 
@@ -1261,12 +1255,11 @@ function musicSearch(){
   document.getElementById("music-status").textContent="Searching...";
   document.getElementById("music-status").style.display="block";
   document.getElementById("music-results").innerHTML="";
-  fetch(MONOCHROME_API+"/search?s="+encodeURIComponent(q))
+  fetch(VEROME_API+"/api/search?q="+encodeURIComponent(q))
     .then(function(r){return r.json();})
     .then(function(json){
       document.getElementById("music-status").style.display="none";
-      var items=(json.data||json).items||[];
-      items=items.filter(function(x){return x._type==="track"||(x.title&&x.artist);});
+      var items=(json.songs||json.results||[]);
       if(!items.length){document.getElementById("music-status").textContent="No results found.";document.getElementById("music-status").style.display="block";return;}
       musicResults=items;musicRenderResults();
     })
@@ -1282,11 +1275,11 @@ function musicRenderResults(){
     card.onmouseout=function(){if(i!==musicCurrentIdx)this.style.background="transparent";};
     card.onclick=function(){musicPlay(i);};
     var thumb=document.createElement("img");
-    thumb.src=item._thumb||musicGetCoverUrl(item.album?.cover);
+    thumb.src=item.thumbnail||item._thumb||"";
     thumb.style.cssText="width:50px;height:50px;border-radius:5px;object-fit:cover;flex-shrink:0;";
     var info=document.createElement("div");info.style.cssText="flex:1;min-width:0;";
     var title=document.createElement("div");title.style.cssText="font-size:.76rem;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";title.textContent=item.title||"Unknown";
-    var ch=document.createElement("div");ch.style.cssText="font-size:.66rem;color:var(--text-muted);margin-top:2px;font-family:var(--mono);";ch.textContent=item.artist?.name||"";
+    var ch=document.createElement("div");ch.style.cssText="font-size:.66rem;color:var(--text-muted);margin-top:2px;font-family:var(--mono);";ch.textContent=item.artist||"";
     var qBtn=document.createElement("button");
     qBtn.innerHTML='<i class="fas fa-plus"></i>';qBtn.title="Add to queue";
     qBtn.style.cssText="background:transparent;border:none;color:var(--text-muted);cursor:pointer;font-size:.75rem;padding:5px;transition:.15s;flex-shrink:0;";
@@ -1300,8 +1293,9 @@ async function musicPlay(idx){
   musicCurrentIdx=idx;musicRenderResults();
   var item=musicResults[idx];
   var title=item.title||"Unknown";
-  var channel=item.artist?.name||"";
-  var thumb=item._thumb||musicGetCoverUrl(item.album?.cover);
+  var channel=item.artist||"";
+  var thumb=item.thumbnail||item._thumb||"";
+  var videoId=item.videoId||item.id;
   document.getElementById("music-track-title").textContent=title;
   document.getElementById("music-track-channel-text").textContent=channel;
   document.getElementById("music-thumb").src=thumb;
@@ -1314,35 +1308,25 @@ async function musicPlay(idx){
   document.getElementById("music-bar").style.display="flex";
   musicAddToHistory(item);
   var audio=getMusicAudio();
+  document.getElementById("music-track-title").textContent=title+" (loading...)";
   try{
-    var res=await fetch(MONOCHROME_API+"/track/?id="+item.id);
+    var res=await fetch(VEROME_API+"/api/stream?id="+videoId);
     var data=await res.json();
-    var manifest=data?.data?.manifest;
-    if(!manifest)throw new Error("no manifest");
-    var decoded=atob(manifest);
-    var streamUrl;
-    if(decoded.includes("<MPD")){
-      var blob=new Blob([decoded],{type:"application/dash+xml"});
-      streamUrl=URL.createObjectURL(blob);
-      if(!_musicDash){_musicDash=dashjs.MediaPlayer().create();}
-      _musicDash.initialize(audio,streamUrl,true);
-      _musicDash.setVolume(+document.getElementById("music-vol").value/100);
-    }else{
-      try{var parsed=JSON.parse(decoded);streamUrl=parsed?.urls?.[0];}catch(e){}
-      if(!streamUrl){var m=decoded.match(/https?:\/\/[^\s"']+/);streamUrl=m?m[0]:null;}
-      if(!streamUrl)throw new Error("no url");
-      if(_musicDash){try{_musicDash.destroy();}catch(e){}_musicDash=null;}
-      audio.src=streamUrl;
-      audio.volume=+document.getElementById("music-vol").value/100;
-      audio.play().catch(function(){});
-    }
+    var streamUrl=data.url||data.stream||data.audio||(data.urls&&data.urls[0]);
+    if(!streamUrl)throw new Error("no stream");
+    // Use proxy to avoid CORS issues
+    streamUrl=VEROME_API+"/api/proxy?url="+encodeURIComponent(streamUrl);
+    audio.src=streamUrl;
+    audio.volume=+document.getElementById("music-vol").value/100;
+    await audio.play();
+    document.getElementById("music-track-title").textContent=title;
   }catch(e){
     document.getElementById("music-track-title").textContent=title+" (unavailable)";
   }
 }
 function musicTogglePlay(){
   var audio=getMusicAudio();
-  if(!audio.src&&!_musicDash)return;
+  if(!audio.src)return;
   if(audio.paused){audio.play().catch(function(){});}
   else{audio.pause();}
 }
@@ -1361,7 +1345,7 @@ function musicNext(){
   else musicPlay((musicCurrentIdx+1)%musicResults.length);
 }
 function musicAddToQueue(item,fromBtn){
-  musicQueue.push({videoId:String(item.id),title:item.title||"Unknown",channel:item.artist?.name||"",thumb:item._thumb||musicGetCoverUrl(item.album?.cover)});
+  musicQueue.push({videoId:String(item.videoId||item.id),title:item.title||"Unknown",channel:item.artist||"",thumb:item.thumbnail||item._thumb||""});
   musicRenderQueue();
   if(fromBtn){
     var el=fromBtn;el.innerHTML='<i class="fas fa-check"></i>';el.style.color="var(--accent)";
@@ -1394,9 +1378,7 @@ function musicSetVol(v){
   document.getElementById("music-vol-out").textContent=v+"%";
   document.getElementById("music-vol").value=v;
   document.getElementById("music-bar-vol").value=v;
-  var audio=getMusicAudio();
-  audio.volume=+v/100;
-  if(_musicDash)_musicDash.setVolume(+v/100);
+  getMusicAudio().volume=+v/100;
 }
 
 // ── AI MUSIC SUGGESTIONS ──────────────────────────────────────
@@ -1445,12 +1427,11 @@ function musicSearchThenAutoQueue(q){
   document.getElementById("music-status").textContent="Searching...";
   document.getElementById("music-status").style.display="block";
   document.getElementById("music-results").innerHTML="";
-  fetch(MONOCHROME_API+"/search?s="+encodeURIComponent(q))
+  fetch(VEROME_API+"/api/search?q="+encodeURIComponent(q))
     .then(function(r){return r.json();})
     .then(function(json){
       document.getElementById("music-status").style.display="none";
-      var data=(json.data||json).items||[];
-      data=data.filter(function(x){return x._type==="track"||(x.title&&x.artist);});
+      var data=json.songs||json.results||[];
       if(!data.length)return;
       musicResults=data;
       musicRenderResults();
